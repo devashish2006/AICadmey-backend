@@ -24,7 +24,103 @@ app.use(express.json());
 app.use("/api/v1/auth", authRoutes);
 
 // Enhanced language mapping with proper input handling
-const languageConfig = { /* Language configurations remain the same */ };
+const languageConfig = {
+  'python': { 
+    id: 'python3', 
+    version: '4',
+    wrapper: (code, input) => {
+      if (code.includes('input(')) return code;
+      return `
+import sys
+input_values = """${input}""".strip().split('\\n')
+input_counter = 0
+
+def custom_input(prompt=""):
+    global input_counter
+    if input_counter < len(input_values):
+        value = input_values[input_counter]
+        input_counter += 1
+        return value
+    return ""
+
+input = custom_input
+
+${code}`;
+    }
+  },
+  'cpp': { 
+    id: 'cpp17', 
+    version: '1',
+    wrapper: (code, input) => {
+      if (code.includes('main')) return code;
+      
+      // Properly escape and format the input
+      const formattedInput = input
+        .split('\n')
+        .map(line => line.trim())
+        .join('\\n');
+
+      return `#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+using namespace std;
+
+int main() {
+    istringstream cin("${formattedInput}");
+    ${code}
+    return 0;
+}`;
+    }
+  },
+  'c': { 
+    id: 'c', 
+    version: '5',
+    wrapper: (code, input) => {
+      if (code.includes('main')) return code;
+      
+      const formattedInput = input
+        .split('\n')
+        .map(line => line.trim())
+        .join('\\n');
+
+      return `#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int main() {
+    // Create a temporary file for input
+    FILE* temp = tmpfile();
+    fprintf(temp, "${formattedInput}\\n");
+    rewind(temp);
+    
+    // Redirect stdin to use the temporary file
+    stdin = temp;
+    
+    ${code}
+    
+    fclose(temp);
+    return 0;
+}`;
+    }
+  },
+  'javascript': { 
+    id: 'nodejs', 
+    version: '4',
+    wrapper: (code, input) => {
+      if (code.includes('process.stdin')) return code;
+      return `
+const input = \${input}\.trim().split('\\n');
+let inputIndex = 0;
+
+function getNextInput() {
+    return input[inputIndex++] || '';
+}
+
+${code}`;
+    }
+  }
+};
 
 app.post("/api/execute", async (req, res) => {
   try {
